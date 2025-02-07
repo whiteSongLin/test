@@ -100,7 +100,7 @@ for article_data in new_articles_data:
     issue_body += f"  **DOI**: {doi}\n\n"
 
 def create_github_issue(title, body, access_token):
-    url = f"https://api.github.com/repos/[YourGitHubUserName]/autoaiscore/issues"
+    url = f"https://api.github.com/repos/whiteSongLin/autoaiscore/issues"
     headers = {
         "Authorization": f"token {access_token}",
         "Accept": "application/vnd.github.v3+json"
