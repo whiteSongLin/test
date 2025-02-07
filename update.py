@@ -6,7 +6,7 @@ import os
 import openai
 
 # Example PubMed RSS feed URL
-rss_url = 'https://pubmed.ncbi.nlm.nih.gov/rss/search/1rUyv9-0xUixl8iP0hZRiJDvvzoO2ncrWKy4nWspV6YYVdU1FG/?limit=15&utm_campaign=pubmed-2&fc=20250205104849'
+rss_url = 'https://pubmed.ncbi.nlm.nih.gov/rss/search/1JCQdWPbmm1u3izdOredvgN-TA799nFyyzvsqFWy-c-qUGz1xc/?limit=100&utm_campaign=pubmed-2&fc=20250207030752'
 
 access_token = os.getenv('GITHUB_TOKEN')
 openaiapikey = os.getenv('OPENAI_API_KEY')
