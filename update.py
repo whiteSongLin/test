@@ -27,8 +27,8 @@ def extract_scores(text):
                                         "Research Score: <score>\n"
                                         "Social Impact Score: <score>"}
         ],
-        max_tokens=100,
-        temperature=0.5
+        max_tokens=277,
+        temperature=0.7
     )
 
     generated_text = response.choices[0].message.content.strip()  
