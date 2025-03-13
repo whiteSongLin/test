@@ -6,7 +6,7 @@ import os
 import openai
 
 # Example PubMed RSS feed URL
-rss_url = 'https://pubmed.ncbi.nlm.nih.gov/rss/search/1JCQdWPbmm1u3izdOredvgN-TA799nFyyzvsqFWy-c-qUGz1xc/?limit=100&utm_campaign=pubmed-2&fc=20250207030752'
+rss_url = 'https://pubmed.ncbi.nlm.nih.gov/rss/search/1BsDMEWA_ZXeDiqmjuX8stoSY6U8uLseWdwk5HWoqyOvYipwoU/?limit=50&utm_campaign=pubmed-2&fc=20250312220950'
 
 access_token = os.getenv('GITHUB_TOKEN')
 openaiapikey = os.getenv('OPENAI_API_KEY')
@@ -49,8 +49,8 @@ def get_pubmed_abstracts(rss_url):
     # Parse the PubMed RSS feed
     feed = feedparser.parse(rss_url)
 
-    # Calculate the date one week ago
-    one_week_ago = datetime.now(timezone.utc) - timedelta(weeks=1)
+    # Calculate the date one week ago -->> four weeks
+    one_week_ago = datetime.now(timezone.utc) - timedelta(weeks=4)
 
     # Iterate over entries in the PubMed RSS feed and extract abstracts and URLs
     for entry in feed.entries:
