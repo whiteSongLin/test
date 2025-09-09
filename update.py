@@ -15,78 +15,163 @@ client = openai.OpenAI(api_key=openaiapikey, base_url="https://api.deepseek.com"
 # if you use deepseek api key, change to: client = openai.OpenAI(api_key=openaiapikey, base_url="https://api.deepseek.com")
 
 def extract_scores(text):
-    # Use OpenAI API to get Research Score and Social Impact Score with structured JSON output
+    # Use OpenAI API to get Research Score and Social Impact Score with multiple fallback strategies
+    
+    # Strategy 1: Try deepseek-chat (more reliable than deepseek-reasoner for structured output)
     try:
         response = client.chat.completions.create(
-            model="deepseek-reasoner", 
+            model="deepseek-chat", 
             messages=[
-                {"role": "system", "content": "You are a Natural Killer cell therapy expert and researcher skilled at evaluating research quality and impact. Always respond with valid JSON only."},
-                {"role": "user", "content": f"Evaluate this research article and provide scores as valid JSON:\n\n{text}\n\n"
-                                            "Provide your evaluation in this exact JSON format:\n"
-                                            "{\n"
-                                            '  "research_score": <number 0-100>,\n'
-                                            '  "social_impact_score": <number 0-100>,\n'
-                                            '  "research_justification": "<brief explanation for research score>",\n'
-                                            '  "social_justification": "<brief explanation for social impact score>"\n'
-                                            "}\n\n"
+                {"role": "system", "content": "You are a Natural Killer cell therapy expert and researcher. Evaluate research articles and provide scores."},
+                {"role": "user", "content": f"Evaluate this research article and provide scores:\n\n{text}\n\n"
+                                            "IMPORTANT: Respond with ONLY this exact format (no extra text):\n"
+                                            "Research Score: [number 0-100]\n"
+                                            "Social Impact Score: [number 0-100]\n"
+                                            "Research Justification: [brief explanation]\n"
+                                            "Social Justification: [brief explanation]\n\n"
                                             "Scoring criteria:\n"
                                             "- Research Score: Innovation, methodological rigor, data reliability\n"
                                             "- Social Impact Score: Public attention potential, policy relevance, societal impact"}
             ],
-            max_tokens=400,
-            temperature=0.3
+            max_tokens=500,
+            temperature=0.1
         )
 
         generated_text = response.choices[0].message.content.strip()
         
-        # Try to extract JSON from the response
-        try:
-            # Find JSON in the response (in case there's extra text)
-            start_brace = generated_text.find('{')
-            end_brace = generated_text.rfind('}') + 1
-            if start_brace != -1 and end_brace != 0:
-                json_text = generated_text[start_brace:end_brace]
-                result = json.loads(json_text)
-                
-                return (
-                    str(result.get('research_score', 'N/A')),
-                    str(result.get('social_impact_score', 'N/A')),
-                    result.get('research_justification', 'No justification provided'),
-                    result.get('social_justification', 'No justification provided')
-                )
-            else:
-                raise ValueError("No JSON found in response")
-                
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            print(f"Error parsing JSON response: {e}")
-            print(f"Raw response: {generated_text}")
-            # Fallback to original parsing method
-            return parse_text_response(generated_text)
+        print(f"🔍 Raw API response (first 200 chars): {generated_text[:200]}...")
+        
+        if not generated_text:
+            print("⚠️  Empty response from API")
+            return "N/A", "N/A", "Empty API response", "Empty API response"
+        
+        # Parse the structured text response
+        return parse_structured_response(generated_text)
             
     except Exception as e:
-        print(f"Error calling API: {e}")
-        return "Error", "Error", "API call failed", "API call failed"
+        print(f"❌ Error calling deepseek-chat API: {e}")
+        
+        # Strategy 2: Fallback to deepseek-reasoner if chat fails
+        print("🔄 Trying deepseek-reasoner as fallback...")
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-reasoner", 
+                messages=[
+                    {"role": "system", "content": "You are a Natural Killer cell therapy expert. Provide research evaluation scores."},
+                    {"role": "user", "content": f"Rate this research article:\n\n{text}\n\n"
+                                                "Give me:\n"
+                                                "Research Score: [0-100]\n"
+                                                "Social Impact Score: [0-100]\n"
+                                                "Brief explanation for each score."}
+                ],
+                max_tokens=300,
+                temperature=0.1
+            )
+            
+            generated_text = response.choices[0].message.content.strip()
+            print(f"🔍 Fallback response (first 200 chars): {generated_text[:200]}...")
+            
+            if generated_text:
+                return parse_structured_response(generated_text)
+            else:
+                return "N/A", "N/A", "Empty fallback response", "Empty fallback response"
+                
+        except Exception as e2:
+            print(f"❌ Fallback API also failed: {e2}")
+            return "Error", "Error", "All API calls failed", "All API calls failed"
 
-def parse_text_response(generated_text):
-    """Fallback parsing method for non-JSON responses"""
+def parse_structured_response(generated_text):
+    """Parse structured text response from API"""
+    research_score = "N/A"
+    social_impact_score = "N/A"
+    research_justification = "No explanation provided"
+    social_justification = "No explanation provided"
+    
+    lines = generated_text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Extract research score
+        if line.startswith("Research Score:"):
+            score_part = line[len("Research Score:"):].strip()
+            # Extract number (handles formats like "85", "85/100", "Score: 85", etc.)
+            import re
+            numbers = re.findall(r'\d+', score_part)
+            if numbers:
+                research_score = numbers[0]
+        
+        # Extract social impact score
+        elif line.startswith("Social Impact Score:") or line.startswith("Social Score:"):
+            prefix = "Social Impact Score:" if line.startswith("Social Impact Score:") else "Social Score:"
+            score_part = line[len(prefix):].strip()
+            numbers = re.findall(r'\d+', score_part)
+            if numbers:
+                social_impact_score = numbers[0]
+        
+        # Extract research justification
+        elif line.startswith("Research Justification:") or line.startswith("Research:"):
+            prefix = "Research Justification:" if line.startswith("Research Justification:") else "Research:"
+            justification = line[len(prefix):].strip()
+            if justification:
+                research_justification = justification
+        
+        # Extract social justification
+        elif line.startswith("Social Justification:") or line.startswith("Social:"):
+            prefix = "Social Justification:" if line.startswith("Social Justification:") else "Social:"
+            justification = line[len(prefix):].strip()
+            if justification:
+                social_justification = justification
+    
+    # If structured parsing fails, try fallback parsing
+    if research_score == "N/A" or social_impact_score == "N/A":
+        print("🔄 Structured parsing failed, trying fallback parsing...")
+        return fallback_parse_any_format(generated_text)
+    
+    return research_score, social_impact_score, research_justification, social_justification
+
+def fallback_parse_any_format(generated_text):
+    """Ultra-flexible fallback parsing for any response format"""
+    import re
+    
+    # Look for any numbers that might be scores
+    numbers = re.findall(r'\b(\d{1,3})\b', generated_text)
+    
     research_score = "N/A"
     social_impact_score = "N/A"
     
-    # Extract research score
-    research_score_start = generated_text.find("Research Score:")
-    if research_score_start != -1:
-        research_score_line = generated_text[research_score_start+len("Research Score:"):].split("\n")[0].strip()
-        # Extract just the number
-        research_score = ''.join(filter(str.isdigit, research_score_line)) or "N/A"
-
-    # Extract social impact score
-    social_impact_score_start = generated_text.find("Social Impact Score:")
-    if social_impact_score_start != -1:
-        social_score_line = generated_text[social_impact_score_start+len("Social Impact Score:"):].split("\n")[0].strip()
-        # Extract just the number
-        social_impact_score = ''.join(filter(str.isdigit, social_score_line)) or "N/A"
-
-    return research_score, social_impact_score, "Parsed from text", "Parsed from text"
+    # Try to find scores near keywords
+    text_lower = generated_text.lower()
+    
+    # Look for research-related scores
+    research_patterns = ['research', 'innovation', 'methodolog', 'rigor', 'data']
+    social_patterns = ['social', 'impact', 'public', 'policy', 'society']
+    
+    for i, num in enumerate(numbers):
+        num_val = int(num)
+        if 0 <= num_val <= 100:  # Valid score range
+            # Check context around this number
+            start_pos = max(0, generated_text.find(num) - 50)
+            end_pos = min(len(generated_text), generated_text.find(num) + 50)
+            context = generated_text[start_pos:end_pos].lower()
+            
+            # Assign to research score if context matches
+            if any(pattern in context for pattern in research_patterns) and research_score == "N/A":
+                research_score = num
+            # Assign to social score if context matches
+            elif any(pattern in context for pattern in social_patterns) and social_impact_score == "N/A":
+                social_impact_score = num
+    
+    # If we still don't have scores, just use the first two valid numbers found
+    valid_numbers = [n for n in numbers if 0 <= int(n) <= 100]
+    if research_score == "N/A" and valid_numbers:
+        research_score = valid_numbers[0]
+    if social_impact_score == "N/A" and len(valid_numbers) > 1:
+        social_impact_score = valid_numbers[1]
+    elif social_impact_score == "N/A" and len(valid_numbers) == 1:
+        social_impact_score = valid_numbers[0]  # Use same score for both if only one found
+    
+    return research_score, social_impact_score, "Extracted from response text", "Extracted from response text"
 
 def get_pubmed_abstracts(rss_url):
     abstracts_with_urls = []
